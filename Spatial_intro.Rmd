@@ -1,0 +1,206 @@
+---
+title: "R_Ladies_MCR"
+author: "Ellen Talbot"
+date: "23.10.2017"
+output: html_document
+---
+
+![](https://rladies.org/wp-content/uploads/2016/12/R-LadiesGlobal.png)
+
+##Geographical Analysis in R
+
+- Basic shapefiles
+- Adding data to maps
+- Showing off with Leaflet and the Meet-up API
+
+###Packages for creating spatial visualisations
+```{r, echo=TRUE}
+
+#install.packages("ggplot2")
+#install.packages ("leaflet")
+#install.packages("jsonlite")
+#install.packages("maptools")
+#install.packages("classInt")
+#install.packages("RColorBrewer")
+
+
+#leaflet is a dependency of tmap, so you will already have it, but it is a cool package on its own and worth playing with! 
+```
+
+###Download the following files:
+
+Download all the files at this link and add them to your working directory. For shapefiles to render correctly - even though you only load in the .shp file - the others need to be there in the background. The data is contained within the dataframe element of the 'SpatialPolygonsDataFrame'. 
+
+You will need to create a user account but this is very straightforward. 
+
+- [CDRC 2011 OAC Geodata Pack - Manchester (E08000003)](https://data.cdrc.ac.uk/dataset/cdrc-2011-oac-geodata-pack-manchester-e08000003)
+
+
+###Your first shapefile
+```{r, echo=TRUE}
+
+library(maptools)
+# Use the whole filepath not just the extension from your working directory
+
+Man_LSOA <- readShapePoly("~/Dropbox/R_ladies/E08000003_IMD/E08000003.shp") #Polygons layer
+
+Man_Roads <- readShapeLines("~/Dropbox/R_ladies/E08000003_IMD/Road.shp") #Roads layer
+
+#Ignore the 'use rgdal::readOGR' message - you can look into this another time. It is a better package, but can be very stubborn! 
+
+```
+
+```{r, echo=TRUE}
+plot (Man_LSOA)
+```
+
+###Adding data
+
+```{r, echo=TRUE}
+library(classInt) #Load package
+```
+
+```{r, echo=TRUE}
+head(Man_LSOA@data)
+```
+
+```{r, echo=TRUE}
+#Replace imd_rank with any of the headings to plot the variable you are interested in.
+
+
+breaks <- classIntervals(Man_LSOA@data$imd_rank, n = 5, style = "fisher") #Create 'fisher' breaks
+```
+
+```{r, echo=TRUE}
+
+library(RColorBrewer) #Load package
+
+```
+
+[Color Brewer](http://colorbrewer2.org/)
+
+```{r, echo=TRUE}
+
+#Select your colour palette - follow the link for lots of options and a great website for choosing map colour schemes
+
+my_colours <- brewer.pal(6, "YlOrRd") 
+my_colours
+
+```
+
+We can then use the function findColours() to select the appropriate color for each of the numbers we intend to map, depending on where these fit within the break points we calculated.
+
+```{r, echo=TRUE}
+
+colours_to_map <- findColours(breaks, my_colours)
+
+```
+We can then create a basic map using this list of colors and the plot() function again.
+```{r, echo=TRUE}
+
+plot(Man_LSOA,col=colours_to_map,border = NA)
+
+```
+
+We can also add additional layers onto the map using a further parameter ("add") which is set to "TRUE". Without the "add=TRUE", every time plot() is called, the previous plot is replaced. Two further parameters are used, "col" to specify the line color, and "lwd" the line width.
+
+```{r, echo=TRUE}
+plot(Man_LSOA,col=colours_to_map,border = NA)
+plot(Man_Roads,add=TRUE, col="#252525", lwd=0.1)
+```
+
+Another feature that is very common to see on a map is a legend which tells you what values the colors used on the map correspond to. This combines the legend() function with a further function leglabs() (from the maptools package) to create a legend:
+
+```{r, echo=TRUE}
+# Plot choropleth - run whole code block together!
+plot(Man_LSOA,col=colours_to_map,border = NA)
+# Plot roads
+plot(Man_Roads,add=TRUE, col="#252525",lwd=0.1)
+# Add legend
+legend("bottomleft" ,legend = leglabs(breaks$brks, between = " to "), fill = my_colours, bty = "n",cex=0.6)
+```
+
+#Fancy interactive stuff
+
+```{r, echo=TRUE}
+
+library(leaflet)
+
+mymap <- leaflet(height = 300) %>%
+  addTiles() %>%
+  setView(lng = -2.236145, lat = 53.482215, zoom = 16)
+
+mymap
+```
+
+```{r, echo=TRUE}
+mymap <- mymap %>% 
+  addMarkers(-2.236145, 53.482215, popup="Hello R-Ladies!") # add a marker
+
+mymap
+```
+
+#Fancy interactive stuff with data!
+
+Go to the following 
+[ link ](https://secure.meetup.com/meetup_api/console/?path=/recommended/groups)
+
+- Zip - Your postcode
+- Country - UK
+- Radius - 20
+- Omit - description
+
+Copy and paste your own signed URL!
+
+```{r, echo=TRUE}
+library(jsonlite)
+
+meet_up <- as.data.frame(fromJSON("https://api.meetup.com/recommended/groups?photo-host=public&location=Manchester&zip=M15+6JJ&page=20&country=gb&sig_id=107413022&omit=description&sig=c9a1c2f8b776217244b51facb39353930e63ffd8")) #Replace this signed URL with your own!
+
+```
+
+Check that your lat and long are actually in columns 15 and 16! 
+
+```{r, echo=TRUE}
+
+names(meet_up) [15] <- c("Lat") #rename colums
+names(meet_up) [16]<- c("Lon") #rename colums
+
+```
+
+```{r, echo=TRUE}
+#Create a spatial dataframe using the lat and long values from 'meet_up'
+coords <- cbind(meet_up$Lon, meet_up$Lat)
+sp <- SpatialPoints(coords) # Turn these coords into points
+spdf <- SpatialPointsDataFrame(coords, meet_up) #Rejoin these points to the original data
+
+```
+
+```{r, echo=TRUE}
+
+#Try zooming out on the map if you don't get any markers immediately!
+mymeets <- mymap %>% 
+  addMarkers(data=spdf, popup= spdf$name, clusterOptions = markerClusterOptions()) # add markers and cluster
+
+mymeets
+
+```
+
+###Some online web mapping
+Create nice and easily shareable visualisations by just uploading data with a spatial element; points, postcodes, polygons, lines etc.
+
+- [Carto](https://carto.com)
+
+- [Mapbox](https://www.mapbox.com)
+
+
+###Websites for more information and tutorials 
+My supervisors both produce great open resources for spatial analysis in R (and python)
+
+- [Alex Singleton](https://github.com/alexsingleton/urban_analytics)
+- [Dani Arribas-Bel](www.darribas.org)
+
+###Any other business
+[CDRC maps](https://maps.cdrc.ac.uk/#/indicators/ahah/default/BTTTFTT/10/-2.9456/53.3820)
+
+Today's data is openly available by creating a user account at [CDRC data](https://data.cdrc.ac.uk)
